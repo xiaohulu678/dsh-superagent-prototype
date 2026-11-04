@@ -18,9 +18,11 @@ import { allowedSender, settingsPolicy } from '../policy.ts'
 import { SourceRegistry } from '../sources/registry.ts'
 import { Commands } from '../infra/commands.ts'
 import type { Deployment, Machine } from '../deployment.ts'
+import { runAsWorker } from '../infra/environment.ts'
 import { environmentOf, ticketEnvironment, type Variable } from './execution-environment.ts'
 import type { SetupProblem } from '../setup.ts'
-import { DshExecutor, sourceTrigger, triggerMessage, workerSessionId } from '../executor/dsh.ts'
+import { DshExecutor, sourceTrigger, ticketExecution, triggerMessage, workerSessionId } from '../executor/dsh.ts'
+import type { AssessmentOutcome } from '../core/index.ts'
 import { ticketCard } from './cards.ts'
 import { MasterAssessor } from './assessment.ts'
 import { KV } from '../kv.ts'
@@ -125,9 +127,17 @@ export class Runtime extends Service implements SourceHost {
       const policyChanged: EngineForSettings['policyChanged'] = (from, to, effects) => { this.engine.policyChanged(from, to, effects) }
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
         sourceHost: this, setup, requestPass: () => { this.passes.request() } })
-      this.executor = new DshExecutor({ context: ctx, get engine() { return runtime.engine }, store, effects, health: board.claim('worker'), machine,
-        lifetime: this.lifetime, sessions, closing: () => this.closing(), paused: () => this.paused(), environment, sourceLink: link,
-        repliedTo: trigger => repliedTo({ store, sources }, trigger) })
+      // An Executor implementation may be provided as a Cordis service instead of the built-in
+      // one. The choice is made before construction because each implementation registers the
+      // launch and delivery effects, and a second registration is refused.
+      const swap = ctx.get('executor-provider' as never) as { createExecutor?: (host: unknown) => unknown } | undefined
+      this.executor = (swap?.createExecutor ? swap.createExecutor({ store, get engine() { return runtime.engine }, effects, machine, sessions,
+        health: board.claim('worker'), lifetime: this.lifetime, closing: () => runtime.closing(), paused: () => runtime.paused(),
+        environment, sourceLink: link, context: ctx,
+        prepareTicket: (ticket: Ticket, outcome: Extract<AssessmentOutcome, { kind: 'accept' }>) => ticketExecution(ticket, outcome, store.settings(), machine.stateDir),
+        runPrepare: (argv: string[], cwd: string, signal: AbortSignal, env: Record<string, string>) => runAsWorker(ctx.subprocess, argv, cwd, signal, env) }) : new DshExecutor({ context: ctx, get engine() { return runtime.engine }, store, effects,
+        health: board.claim('worker'), machine, lifetime: this.lifetime, sessions, closing: () => this.closing(), paused: () => this.paused(),
+        environment, sourceLink: link, repliedTo: trigger => repliedTo({ store, sources }, trigger) })) as DshExecutor
       this.assessor = new MasterAssessor({ get engine() { return runtime.engine }, commands, get deployment() { return setup.deployment }, effects,
         settings: () => store.settings(), paused: () => this.paused(), threadContext: trigger => sources.threadContext(trigger),
         deliver: (id, text) => sessions.prompt(masterId, id, text, 'steer'), candidateCard: candidate => candidateCard(links, candidate) })
