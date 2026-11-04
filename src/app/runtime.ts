@@ -127,10 +127,15 @@ export class Runtime extends Service implements SourceHost {
       const policyChanged: EngineForSettings['policyChanged'] = (from, to, effects) => { this.engine.policyChanged(from, to, effects) }
       this.settings = new Settings({ store, sources, engine: { policyChanged }, health: board, context: ctx, lifetime: this.lifetime, sessions,
         sourceHost: this, setup, requestPass: () => { this.passes.request() } })
-      // An Executor implementation may be provided as a Cordis service instead of the built-in
-      // one. The choice is made before construction because each implementation registers the
-      // launch and delivery effects, and a second registration is refused.
-      const swap = ctx.get('executor-provider' as never) as { createExecutor?: (host: unknown) => unknown } | undefined
+      // settings.executor.kind names the implementation: 'dsh' is the built-in one, any other value
+      // asks the Cordis service executor-provider-<kind> for it. Switching restarts the service, so
+      // only one implementation is ever constructed in a process.
+      const kind = store.settings().executor.kind
+      const swap = kind === 'dsh' ? undefined
+        : ctx.get(('executor-provider-' + kind) as never) as { createExecutor?: (host: unknown) => unknown } | undefined
+      if (kind !== 'dsh' && !swap?.createExecutor) {
+        throw new Error('settings.executor.kind is ' + kind + ', but no plugin provides executor-provider-' + kind)
+      }
       this.executor = (swap?.createExecutor ? swap.createExecutor({ store, get engine() { return runtime.engine }, effects, machine, sessions,
         health: board.claim('worker'), lifetime: this.lifetime, closing: () => runtime.closing(), paused: () => runtime.paused(),
         environment, sourceLink: link, context: ctx,

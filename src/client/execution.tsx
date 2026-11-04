@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import { TICKET_FILTERS, type TicketFilter } from '../app/api.ts'
 import { LIMITS } from '../limits.ts'
 import { usePoll, type SettingsView, type SourceView, type StateView } from './api.ts'
-import { DisclosureRow, Icon, InfoTip, Input, Pill } from './controls.tsx'
+import { DisclosureRow, Icon, InfoTip, Input, Pill, SegmentedControl } from './controls.tsx'
 import { SaveBar } from './draft.tsx'
 import { usePanel } from './provider.tsx'
 import { TicketLine } from './rows.tsx'
@@ -94,6 +94,11 @@ export function ExecutionSettings() {
       <Fields disabled={draft.busy}>
         <div className="dt-form dt-block">
           <h2 className="dt-block-title">{t('term.executor')}<InfoTip text={t('executorIntro')} /></h2>
+          <Section title={t('executorKind')} hint={t('executorKindHint')}>
+            <SegmentedControl label={t('executorKind')} value={value.kind} disabled={draft.busy}
+              options={[{ value: 'dsh', label: t('executorKindDsh') }, { value: 'codebuddy', label: t('executorKindCodeBuddy') }]}
+              onChange={kind => edit({ kind })} />
+          </Section>
           <Section title={t('executorModel')} hint={t('executorModelHint')}><ModelField id="dt-worker-model" value={value.model}
             onChange={model => edit({ model })} /></Section>
           <Field label={t('maxWorkers')} hint={t('maxWorkersHint')}>

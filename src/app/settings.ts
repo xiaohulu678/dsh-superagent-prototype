@@ -173,7 +173,9 @@ export class Settings {
       const delivery = await sessions.delivery(`settings:${block}`)
       return { saved: true, revision: store.blockRevision(block), policy_changed: false, restarting: false, context_delivery: delivery }
     }
-    const restarting = setupChanged(old, settings) || !this.host.setup.configured()
+    // Switching the executor kind needs a restart: the two implementations cannot hold the launch
+    // and delivery effects at the same time, so each is built at startup.
+    const restarting = setupChanged(old, settings) || old.executor.kind !== settings.executor.kind || !this.host.setup.configured()
     const before = policyVersion(old), after = policyVersion(settings)
     const scope = (version: SettingsValue) => ({
       scope: (input: { source: string; meta: Record<string, unknown> }) => this.host.sources.scope(input, version) })

@@ -87,8 +87,16 @@ export const EvalConfigSchema = z.object({
 }).strict()
 const CommandNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/).refine(name => name !== '.' && name !== '..', 'Not a command name')
   .refine(name => !WORKER_COMMANDS.includes(name), `${WORKER_COMMANDS.join(', ')} cannot be blocked`)
-/** Executor settings: worker model, concurrency, ticket directory root (empty defaults to `<stateDir>/work`), `prepare` command, and blocked commands. */
+/**
+ * Which implementation runs assignments. `dsh` is the built-in executor; any other value names a
+ * Cordis service `executor-provider-<kind>` that the runtime asks for an executor instead. Switching
+ * the kind restarts the service, because each implementation registers the launch and delivery
+ * effects and only one may hold them.
+ */
+const ExecutorKindSchema = z.string().trim().regex(/^[a-z][a-z0-9-]*$/, 'A lowercase name such as dsh or codebuddy')
+/** Executor settings: implementation, worker model, concurrency, ticket directory root (empty defaults to `<stateDir>/work`), `prepare` command, and blocked commands. */
 export const ExecutorConfigSchema = z.object({
+  kind: ExecutorKindSchema.default('dsh'),
   model: RoleModelSchema.nullable().default(null),
   maxWorkers: z.number().int().min(LIMITS.maxWorkers.min).max(LIMITS.maxWorkers.max).default(3),
   directory: z.string().trim().refine(path => path === '' || path.startsWith('/'), 'An absolute path, or empty for <stateDir>/work').default(''),
